@@ -1,72 +1,41 @@
 from typing import Any
 from firestore import SubscriptionService
-from pydantic import BaseModel, Field
 
 from logger_config import logger
-from firestore import DBService
-from .email_service import EmailService
-from .email_utils import (
-    set_order_status,
-    get_user_mailer_settings,
-    get_user_key,
-    validate_servers,
-)
+from .email_handlers import handle_order_email, handle_test_email
+from .email_schemas import EmailOrder, EmailTest
 
-
-class EmailDoc(BaseModel):
-    storeID: str
-    orderID: str
-    userID: str
-    path: str
-    test_email: str | None = Field(default=None, alias="testEmail")
 
 def setup_email_handlers(subscription_service: SubscriptionService) -> None:
 
     @subscription_service.on_create("email")
     async def handle_email_creation(doc: Any) -> None:
         try:
-            db_service = DBService()
-            email_doc = EmailDoc(**doc.to_dict())
-            order_doc = await db_service.get_document(
-                f"operational/stores_data/{email_doc.storeID}/{email_doc.path}/{email_doc.orderID}"
-            )
+            doc_data = doc.to_dict()
 
-            userID = order_doc.get("userID")
-            if not userID:
-                await set_order_status(
-                    email_doc.storeID,
-                    email_doc.orderID,
-                    status="ERROR",
-                    status_detail="User ID not found",
+            if doc_data.get("type") == "order":
+                user_id = doc_data.get("userID")
+                path = doc_data.get("path")
+                order_id = doc_data.get("orderID")
+                store_id = doc_data.get("storeID")
+                email_doc = EmailOrder(
+                    user_id=user_id,
+                    path=path,
+                    order_id=order_id,
+                    store_id=store_id,
                 )
-                return
-
-            user_settings = await get_user_mailer_settings(email_doc.storeID, userID)
-            if not user_settings:
-                await set_order_status(
-                    email_doc.storeID,
-                    email_doc.orderID,
-                    status="ERROR",
-                    status_detail="User settings not found",
+                await handle_order_email(email_doc)
+            elif doc_data.get("type") == "test":
+                user_id = doc_data.get("userID")
+                store_id = doc_data.get("storeID")
+                test_email = doc_data.get("testEmail")
+                email_doc = EmailTest(
+                    user_id=user_id, store_id=store_id, test_email=test_email
                 )
-                return
-
-            user_key = await get_user_key(userID)
-            if not user_key:
-                await set_order_status(
-                    email_doc.storeID,
-                    email_doc.orderID,
-                    status="ERROR",
-                    status_detail="User key not found",
-                )
-                return
-            user_settings.user_key = user_key
-
-            email_service = EmailService(user_settings)
-            await validate_servers(
-                user_settings, email_service, email_doc.storeID, email_doc.orderID
-            )
-            if email_doc.test_email:
-                await email_service.send_test_email(email_doc.test_email)
+                await handle_test_email(email_doc)
+            elif doc_data.get("type") is None:
+                logger.warning(f"Email document without type: {doc.id}")
+            else:
+                logger.error(f"Invalid email type: {doc_data.get('type')}")
         except Exception as e:
             logger.error(f"Error processing email creation: {e}")

@@ -1,7 +1,7 @@
 import asyncio
 
 from firestore import SubscriptionService
-from emailer.email_subscription import setup_email_handlers
+from emailer import setup_email_handlers
 from logger_config import logger
 
 async def main():
