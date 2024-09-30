@@ -7,7 +7,7 @@ import aiosmtplib
 import aioimaplib
 
 from utils.encryption_utils import EncryptionUtils
-from schemas.user_schema import UserSettings
+from user import UserSettings
 from logger_config import logger
 
 

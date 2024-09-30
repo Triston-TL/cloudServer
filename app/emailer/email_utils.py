@@ -1,6 +1,6 @@
 from typing import Optional
 
-from schemas import UserSettings
+from user import UserSettings
 from firestore import DBService
 from logger_config import logger
 from emailer.email_service import EmailService
