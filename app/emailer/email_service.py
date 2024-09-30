@@ -1,5 +1,8 @@
+import os
 from typing import Optional
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 import aiosmtplib
 import aioimaplib
 
@@ -61,14 +64,28 @@ class EmailService:
         except Exception as e:
             logger.error(f"Error validating IMAP server: {e}")
             raise ValueError("Failed to validate IMAP server") from e
-        
-    async def send_test_email(self, recipient: str) -> None:
+
+    async def send_test_email_with_pdf(self, recipient: str, pdf_path: str) -> None:
         try:
-            logger.info(f"Sending test email to {recipient}")
-            message = MIMEText("This is a test email", "plain", "utf-8")
+            logger.info(f"Sending test email with PDF attachment to {recipient}")
+            message = MIMEMultipart()
             message["From"] = self.email
             message["To"] = recipient
-            message["Subject"] = "Test Email"
+            message["Subject"] = "Test Email with PDF Attachment"
+
+            text = MIMEText(
+                "This is a test email with a PDF attachment.", "plain", "utf-8"
+            )
+            message.attach(text)
+
+            with open(pdf_path, "rb") as pdf_file:
+                pdf_attachment = MIMEApplication(pdf_file.read(), _subtype="pdf")
+                pdf_attachment.add_header(
+                    "Content-Disposition",
+                    f'attachment; filename="{pdf_path.split("/")[-1]}"',
+                )
+                message.attach(pdf_attachment)
+
             smtp = aiosmtplib.SMTP(
                 hostname=self.smtp_config.server,
                 port=self.smtp_config.port,
@@ -78,7 +95,10 @@ class EmailService:
             await smtp.login(self.email, self.pwd)
             await smtp.send_message(message)
             await smtp.quit()
-            logger.info(f"Test email sent to {recipient}")
+
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+            logger.info(f"Test email with PDF attachment sent to {recipient}")
         except Exception as e:
-            logger.error(f"Error sending test email: {e}")
-            raise ValueError("Failed to send test email") from e
+            logger.error(f"Error sending test email with PDF attachment: {e}")
+            raise ValueError("Failed to send test email with PDF attachment") from e
